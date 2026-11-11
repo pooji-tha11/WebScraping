@@ -1,6 +1,14 @@
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
 
 import requests
 from bs4 import BeautifulSoup
+
+import mysql.connector
+from datetime import datetime
 
 headers = {"User-Agent": "Mozilla/5.0"}
 
@@ -299,3 +307,64 @@ for blog in blogs:
 # print("Published Date:", published_date)
 # print("Modified Date:", modified_date)
 
+# Connect to MySQL
+cconnection = mysql.connector.connect(
+    host=os.getenv("DB_HOST"),
+    user=os.getenv("DB_USER"),
+    password=os.getenv("DB_PASSWORD"),
+    database=os.getenv("DB_NAME")
+)
+cursor = connection.cursor()
+
+print("Connected to MySQL!")
+
+
+insert_query = """
+INSERT INTO blogs (
+    post_id, title, description, image_url, blog_url,
+    author, published_date, modified_date, content
+)
+VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+ON DUPLICATE KEY UPDATE
+    title = VALUES(title),
+    description = VALUES(description),
+    image_url = VALUES(image_url),
+    blog_url = VALUES(blog_url),
+    author = VALUES(author),
+    published_date = VALUES(published_date),
+    modified_date = VALUES(modified_date),
+    content = VALUES(content)
+"""
+
+for blog in all_blogs:
+
+    published = (
+        datetime.fromisoformat(blog["published_date"]).replace(tzinfo=None)
+        if blog["published_date"] else None
+    )
+
+    modified = (
+        datetime.fromisoformat(blog["modified_date"]).replace(tzinfo=None)
+        if blog["modified_date"] else None
+    )
+
+    values = (
+        blog["post_id"],
+        blog["title"],
+        blog["description"],
+        blog["image_url"],
+        blog["blog_url"],
+        blog["author"],
+        published,
+        modified,
+        blog["content"]
+    )
+
+    cursor.execute(insert_query, values)
+
+connection.commit()
+
+print("All blogs inserted successfully!")
+
+cursor.close()
+connection.close()
