@@ -12,6 +12,8 @@ from datetime import datetime
 
 headers = {"User-Agent": "Mozilla/5.0"}
 
+
+
 def scrape_blog(blog_url):
 
     blog_response = requests.get(blog_url, headers=headers, timeout=20)
@@ -59,14 +61,25 @@ def scrape_blog(blog_url):
 url = "https://elicittechnology.com/blogs/"
 
 
-response = requests.get(url, headers=headers, timeout=20)
-
-print("Status Code:", response.status_code)
+response = requests.get(url, headers=headers)
+response.raise_for_status()
 
 soup = BeautifulSoup(response.text, "html.parser")
 
-print("Page Title:", soup.title.get_text(strip=True))
+links = soup.find_all("a", href=True)
 
+last_page = 1
+
+for link in links:
+    href = link["href"]
+
+    if "/blogs/page/" in href:
+        page_number = link.get_text(strip=True)
+
+        if page_number.isdigit():
+            last_page = max(last_page, int(page_number))
+
+print("Last page:", last_page)
 
 ##--------Used to find the structure of the Blog cards and the elemts in those Blog cards to extract such as the title, description, image and the ID -----------##
 # print("\nHTML STRUCTURE:")
@@ -95,11 +108,11 @@ print("Page Title:", soup.title.get_text(strip=True))
 
 
 # Using CSS Selectors to find all the blogs
-blogs = soup.select("article.uc_post_grid_style_one_item")
+# blogs = soup.select("article.uc_post_grid_style_one_item")
 
 
-# To show the total number of blogs found on the page
-print("Total blogs:", len(blogs))
+# # To show the total number of blogs found on the page
+# print("Total blogs:", len(blogs))
 
 ## ----------- The Blog contet without the actual URL to the Blog page which is wrapped in the parent anchor tag of the Blog card. ---------##
 # Getting each blogs title, desc, image and the ID from the Blog Card
@@ -126,44 +139,64 @@ print("Total blogs:", len(blogs))
 #     print("Image:", image_url)
 ##---------------------------------------------------##
 
+
 all_blogs = []
 
-for blog in blogs:
+for page_number in range(1, last_page + 1):
 
-    title = blog.select_one(".ue_p_title").get_text(strip=True)
+    if page_number == 1:
+        url = "https://elicittechnology.com/blogs/"
+    else:
+        url = f"https://elicittechnology.com/blogs/page/{page_number}/"
 
-    description = blog.select_one(".uc_post_text").get_text(strip=True)
+    response = requests.get(url, headers=headers, timeout=20)
+    response.raise_for_status()
 
-    image = blog.select_one(".uc_post_image img")
-    image_url = image["src"] if image else None
+    soup = BeautifulSoup(response.text, "html.parser")
 
-    post_id = blog.get("id")
+    print("\nScraping page:", page_number)
 
-    link = blog.find_parent("a")
-    blog_url = link.get("href") if link else None
+    # Extract blog cards from the current page
+    blogs = soup.select("article.uc_post_grid_style_one_item")
 
-    # Scrape the individual article
-    article_data = scrape_blog(blog_url) if blog_url else {}
+    print("Blogs found on this page:", len(blogs))
 
-    # Combine all the information into one dictionary
-    blog_data = {
-        "post_id": post_id,
-        "title": title,
-        "description": description,
-        "image_url": image_url,
-        "blog_url": blog_url,
-        "author": article_data.get("author"),
-        "published_date": article_data.get("published_date"),
-        "modified_date": article_data.get("modified_date"),
-        "content": article_data.get("content")
-    }
+    for blog in blogs:
 
-    all_blogs.append(blog_data)
+        title = blog.select_one(".ue_p_title").get_text(strip=True)
 
-    print("\n----------------------------")
-    print("Title:", blog_data["title"])
-    print("Author:", blog_data["author"])
-    print("Published:", blog_data["published_date"])
+        description = blog.select_one(".uc_post_text").get_text(strip=True)
+
+        image = blog.select_one(".uc_post_image img")
+        image_url = image["src"] if image else None
+
+        post_id = blog.get("id")
+
+        link = blog.find_parent("a")
+        blog_url = link.get("href") if link else None
+
+        # Scrape the individual article
+        article_data = scrape_blog(blog_url) if blog_url else {}
+
+        # Combine all information
+        blog_data = {
+            "post_id": post_id,
+            "title": title,
+            "description": description,
+            "image_url": image_url,
+            "blog_url": blog_url,
+            "author": article_data.get("author"),
+            "published_date": article_data.get("published_date"),
+            "modified_date": article_data.get("modified_date"),
+            "content": article_data.get("content")
+        }
+
+        all_blogs.append(blog_data)
+
+        print("Scraped:", title)
+
+print("\nTotal blogs scraped:", len(all_blogs))
+
 
 # first_blog = blogs[0]
 
@@ -308,7 +341,7 @@ for blog in blogs:
 # print("Modified Date:", modified_date)
 
 # Connect to MySQL
-cconnection = mysql.connector.connect(
+connection = mysql.connector.connect(
     host=os.getenv("DB_HOST"),
     user=os.getenv("DB_USER"),
     password=os.getenv("DB_PASSWORD"),
